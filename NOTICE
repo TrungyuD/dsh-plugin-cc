@@ -1,0 +1,11 @@
+dsh-plugin-cc
+Copyright 2026 dsh-plugin-cc contributors
+
+Licensed under the Apache License, Version 2.0.
+
+This project is an unofficial Claude Code plugin for DeepSeek Harness. It is not
+affiliated with DeepSeek.
+
+Portions of plugins/dsh/scripts/lib/ and tests/ are adapted from
+codex-plugin-cc (https://github.com/openai/codex-plugin-cc),
+Copyright 2026 OpenAI, licensed under the Apache License, Version 2.0.

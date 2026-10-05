@@ -1,0 +1,12 @@
+{
+  "name": "dsh-plugin-cc",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Use DeepSeek Harness (dsh) from Claude Code to plan, review plans and rescue tasks.",
+  "license": "Apache-2.0",
+  "keywords": ["claude-code", "plugin", "deepseek", "dsh"],
+  "repository": { "type": "git", "url": "git+https://github.com/TrungyuD/dsh-plugin-cc.git" },
+  "engines": { "node": ">=18.18.0" },
+  "files": ["plugins/", ".claude-plugin/", "README.md", "LICENSE", "NOTICE"],
+  "scripts": { "test": "node --test --test-timeout=120000 tests/*.test.mjs" }
+}
