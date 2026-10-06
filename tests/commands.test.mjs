@@ -89,6 +89,20 @@ test("the rescue agent is limited to Bash and defaults fresh runs to --write", (
   assert.doesNotMatch(text, /codex/i);
 });
 
+test("commands and the rescue agent put the user's text after a -- and never inside double quotes", () => {
+  const plan = read("commands", "plan.md");
+  const review = read("commands", "review-plan.md");
+  const agent = read("agents", "dsh-rescue.md");
+  const skill = read("skills", "dsh-cli-runtime", "SKILL.md");
+  assert.match(plan, /plan '<flags> -- <request>'/);
+  assert.match(review, /review-plan '<flags> <plan-path> -- <focus>'/);
+  assert.match(agent, /task '<flags> -- <task text>'/);
+  assert.match(skill, /task '<flags> -- <task text>'/);
+  for (const [name, text] of [["plan", plan], ["review-plan", review], ["skill", skill]]) {
+    assert.doesNotMatch(text, /(plan|review-plan|task) "</, `${name} has no double-quoted text placeholder`);
+  }
+});
+
 test("skills have names and no codex identifiers", () => {
   for (const name of ["dsh-cli-runtime", "dsh-result-handling"]) {
     const text = read("skills", name, "SKILL.md");

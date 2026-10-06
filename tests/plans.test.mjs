@@ -4,7 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { makeTempDir } from "./helpers.mjs";
-import { collectPlanFiles, findLatestPlanDir } from "../plugins/dsh/scripts/lib/plans.mjs";
+import { collectPlanFiles, findLatestPlanDir, planDirName, savePlanFile } from "../plugins/dsh/scripts/lib/plans.mjs";
 
 function writePlan(root, name, files, mtimeSeconds) {
   const dir = path.join(root, "plans", name);
@@ -66,4 +66,32 @@ test("collectPlanFiles rejects a missing path and a directory without plan.md", 
   const empty = path.join(root, "empty");
   fs.mkdirSync(empty);
   assert.throws(() => collectPlanFiles(empty), /No plan\.md/);
+});
+
+const WHEN = new Date(2026, 9, 6, 11, 19);
+
+test("planDirName builds a local-time stamp and an ascii slug", () => {
+  assert.equal(planDirName("Add a version flag", WHEN), "261006-1119-add-a-version-flag");
+  assert.equal(planDirName("lên plan cải tiến đường dẫn", WHEN), "261006-1119-len-plan-cai-tien-duong-dan");
+  assert.equal(planDirName("ĐÀ NẴNG", WHEN), "261006-1119-da-nang");
+});
+
+test("planDirName falls back for empty or symbol-only requests and caps long slugs at a word boundary", () => {
+  assert.equal(planDirName("", WHEN), "261006-1119-dsh-plan");
+  assert.equal(planDirName("?!... ---", WHEN), "261006-1119-dsh-plan");
+  const slug = planDirName("improve the session cleanup so that every workspace gets cleaned up properly", WHEN).slice("261006-1119-".length);
+  assert.ok(slug.length <= 40, slug);
+  assert.doesNotMatch(slug, /-$/);
+  assert.equal(slug, "improve-the-session-cleanup-so-that");
+});
+
+test("savePlanFile creates plans/ when missing and numbers a colliding directory", () => {
+  const root = makeTempDir();
+  const first = savePlanFile(root, "do it", "# A\n\nbody\n\n", WHEN);
+  const second = savePlanFile(root, "do it", "# B", WHEN);
+
+  assert.equal(first, path.join("plans", "261006-1119-do-it", "plan.md"));
+  assert.equal(second, path.join("plans", "261006-1119-do-it-2", "plan.md"));
+  assert.equal(fs.readFileSync(path.join(root, first), "utf8"), "# Plan: do it\n\n# A\n\nbody\n");
+  assert.equal(findLatestPlanDir(root) !== null, true);
 });

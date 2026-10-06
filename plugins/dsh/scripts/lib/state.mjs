@@ -10,6 +10,7 @@ const PLUGIN_DATA_ENV = "CLAUDE_PLUGIN_DATA";
 const FALLBACK_STATE_ROOT_DIR = path.join(os.tmpdir(), "dsh-companion");
 const STATE_FILE_NAME = "state.json";
 const JOBS_DIR_NAME = "jobs";
+const SESSIONS_DIR_NAME = "sessions";
 const MAX_JOBS = 50;
 const LOCK_DIR_NAME = ".lock";
 const LOCK_STALE_MS = 10000;
@@ -89,6 +90,11 @@ function defaultState() {
   };
 }
 
+function resolveStateRoot() {
+  const pluginDataDir = process.env[PLUGIN_DATA_ENV];
+  return pluginDataDir ? path.join(pluginDataDir, "state") : FALLBACK_STATE_ROOT_DIR;
+}
+
 export function resolveStateDir(cwd) {
   const workspaceRoot = resolveWorkspaceRoot(cwd);
   let canonicalWorkspaceRoot = workspaceRoot;
@@ -101,9 +107,75 @@ export function resolveStateDir(cwd) {
   const slugSource = path.basename(workspaceRoot) || "workspace";
   const slug = slugSource.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "workspace";
   const hash = createHash("sha256").update(canonicalWorkspaceRoot).digest("hex").slice(0, 16);
-  const pluginDataDir = process.env[PLUGIN_DATA_ENV];
-  const stateRoot = pluginDataDir ? path.join(pluginDataDir, "state") : FALLBACK_STATE_ROOT_DIR;
-  return path.join(stateRoot, `${slug}-${hash}`);
+  return path.join(resolveStateRoot(), `${slug}-${hash}`);
+}
+
+// ---------------------------------------------------------------------------
+// Session index: one marker per (Claude session, workspace), so SessionEnd can find every
+// workspace a session started jobs in, not only the directory it started in.
+
+function resolveSessionIndexDir(sessionId) {
+  const hash = createHash("sha256").update(String(sessionId)).digest("hex").slice(0, 16);
+  return path.join(resolveStateRoot(), SESSIONS_DIR_NAME, hash);
+}
+
+export function registerSessionWorkspace(sessionId, workspaceRoot) {
+  const dir = resolveSessionIndexDir(sessionId);
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const marker = path.join(dir, `${path.basename(resolveStateDir(workspaceRoot))}.json`);
+  atomicWrite(marker, `${JSON.stringify({ workspaceRoot })}\n`);
+}
+
+export function listSessionWorkspaces(sessionId) {
+  const dir = resolveSessionIndexDir(sessionId);
+  let names;
+  try {
+    names = fs.readdirSync(dir);
+  } catch {
+    return [];
+  }
+  const roots = [];
+  for (const name of names) {
+    if (!name.endsWith(".json")) {
+      continue;
+    }
+    try {
+      const { workspaceRoot } = JSON.parse(fs.readFileSync(path.join(dir, name), "utf8"));
+      if (typeof workspaceRoot === "string" && workspaceRoot) {
+        roots.push(workspaceRoot);
+      }
+    } catch {
+      // A half-written or foreign file is not a marker.
+    }
+  }
+  return roots;
+}
+
+export function forgetSessionWorkspaces(sessionId) {
+  fs.rmSync(resolveSessionIndexDir(sessionId), { recursive: true, force: true });
+}
+
+// Drops marker dirs of sessions that never reached SessionEnd. Every run rewrites its marker, which
+// refreshes the dir mtime, so a session that is still running jobs keeps its markers.
+export function pruneSessionIndex(maxAgeMs) {
+  const sessionsDir = path.join(resolveStateRoot(), SESSIONS_DIR_NAME);
+  let names;
+  try {
+    names = fs.readdirSync(sessionsDir);
+  } catch {
+    return;
+  }
+  const cutoff = Date.now() - maxAgeMs;
+  for (const name of names) {
+    const dir = path.join(sessionsDir, name);
+    try {
+      if (fs.statSync(dir).mtimeMs < cutoff) {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    } catch {
+      // Already gone or unreadable; the next prune retries.
+    }
+  }
 }
 
 export function resolveStateFile(cwd) {

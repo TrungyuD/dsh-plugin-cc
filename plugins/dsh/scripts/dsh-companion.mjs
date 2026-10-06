@@ -22,7 +22,7 @@ import {
   resolveResultJob,
   resolveResumableTask
 } from "./lib/job-control.mjs";
-import { collectPlanFiles, findLatestPlanDir } from "./lib/plans.mjs";
+import { collectPlanFiles, findLatestPlanDir, savePlanFile } from "./lib/plans.mjs";
 import { binaryAvailable, processCommandIncludes, terminateProcessTree } from "./lib/process.mjs";
 import { interpolateTemplate, loadPromptTemplate } from "./lib/prompts.mjs";
 import {
@@ -32,13 +32,14 @@ import {
   renderStatusReport,
   renderStoredJobResult
 } from "./lib/render.mjs";
-import { generateJobId, upsertJob, withStateLock, writeJobFile } from "./lib/state.mjs";
+import { generateJobId, registerSessionWorkspace, upsertJob, withStateLock, writeJobFile } from "./lib/state.mjs";
 import {
   appendLogLine,
   createJobLogFile,
   createJobProgressUpdater,
   createJobRecord,
   createProgressReporter,
+  isJobCancelled,
   nowIso,
   recordDshPid,
   runTrackedJob
@@ -89,21 +90,24 @@ function outputCommandResult(payload, rendered, asJson) {
   outputResult(asJson ? payload : rendered, asJson);
 }
 
+// A single argv entry is the raw slash-command string: split it shell-style, but keep everything
+// after an unquoted `--` as one verbatim text. Several argv entries are already split.
 function normalizeArgv(argv) {
   if (argv.length === 1) {
     const [raw] = argv;
     if (!raw || !raw.trim()) {
-      return [];
+      return { tokens: [], verbatim: null };
     }
     return splitRawArgumentString(raw);
   }
-  return argv;
+  return { tokens: argv, verbatim: null };
 }
 
 // --wait and --background are handled by the slash commands. They are accepted and ignored here
 // so a stray flag never turns into prompt text.
 function parseCommandInput(argv, config = {}) {
-  return parseArgs(normalizeArgv(argv), {
+  const { tokens, verbatim } = normalizeArgv(argv);
+  const parsed = parseArgs(tokens, {
     ...config,
     booleanOptions: [...(config.booleanOptions ?? []), "background", "wait"],
     aliasMap: {
@@ -111,6 +115,11 @@ function parseCommandInput(argv, config = {}) {
       ...(config.aliasMap ?? {})
     }
   });
+  // The verbatim text never goes through option parsing, so text such as `--json` stays text.
+  if (verbatim) {
+    parsed.positionals.push(verbatim);
+  }
+  return parsed;
 }
 
 function canonicalCwd(cwd) {
@@ -206,9 +215,13 @@ function phaseForEvent(event) {
 
 /**
  * Runs one dsh headless process under job tracking, in the foreground of this process.
- * `summarize(finalText)` produces the one-line job summary.
+ * `summarize(finalText)` produces the one-line job summary. `finalize(result)` may return
+ * `{ payload, renderedSuffix }` extras that are stored with the job result and shown after the output.
  */
-async function executeRun({ job, prompt, permissionMode, model, sessionId, summarize, asJson }) {
+async function executeRun({ job, prompt, permissionMode, model, sessionId, summarize, finalize, asJson }) {
+  if (job.sessionId) {
+    registerSessionWorkspace(job.sessionId, job.workspaceRoot);
+  }
   const logFile = createJobLogFile(job.workspaceRoot, job.id, job.title);
   const jobWithLog = { ...job, logFile };
   upsertJob(job.workspaceRoot, jobWithLog);
@@ -259,7 +272,13 @@ async function executeRun({ job, prompt, permissionMode, model, sessionId, summa
             }
           }
         });
-        return { ...result, summary: summarize(result.payload.finalText, result) };
+        const extras = finalize?.(result);
+        return {
+          ...result,
+          payload: { ...result.payload, ...extras?.payload },
+          rendered: `${result.rendered}${extras?.renderedSuffix ?? ""}`,
+          summary: summarize(result.payload.finalText, result)
+        };
       },
       { logFile }
     );
@@ -322,6 +341,18 @@ async function handlePlan(argv) {
     permissionMode: READ_ONLY,
     model,
     summarize: (finalText) => shorten(firstMeaningfulLine(finalText, request)),
+    // dsh stays read-only; the plan file is written here, after dsh has exited.
+    finalize: (result) => {
+      if (result.exitStatus !== 0 || !result.payload.finalText.trim() || isJobCancelled(workspaceRoot, job.id)) {
+        return null;
+      }
+      try {
+        const planFile = savePlanFile(workspaceRoot, request, result.payload.finalText);
+        return { payload: { planFile }, renderedSuffix: `Saved plan: ${planFile}\n` };
+      } catch (error) {
+        return { payload: {}, renderedSuffix: `Plan not saved: ${error instanceof Error ? error.message : String(error)}\n` };
+      }
+    },
     asJson: options.json
   });
 }

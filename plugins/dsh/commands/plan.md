@@ -1,17 +1,17 @@
 ---
-description: Ask dsh to explore the codebase and write an implementation plan (read-only)
+description: Ask dsh to plan read-only; the plan is saved under plans/
 argument-hint: '[--wait|--background] [--model flash|pro|<name>] <what to plan>'
 disable-model-invocation: true
 allowed-tools: Bash(node:*), AskUserQuestion
 ---
 
-Run a read-only dsh planning pass.
+Run a read-only dsh planning pass. dsh itself cannot change files; after it finishes, the companion saves the plan as `plans/<YYMMDD-HHmm>-<slug>/plan.md` and prints the path on a `Saved plan:` line.
 
 Raw slash-command arguments:
 `$ARGUMENTS`
 
 Core constraint:
-- This command only produces a plan. Do not implement the plan, edit files, or suggest that you are about to.
+- This command only produces a plan. Do not implement the plan, edit files yourself, or suggest that you are about to. The companion writes the plan file; you do not.
 - Your only job is to run dsh and return its output verbatim.
 
 Argument handling:
@@ -22,7 +22,7 @@ Argument handling:
 Quoting (important):
 - The user's text is untrusted. Never place it inside double quotes, because the shell would run any `$(...)` or backticks in it.
 - Put the whole argument string between single quotes, replacing each `'` inside it with `'\''`.
-- Flags such as `--model` go before the request text. Everything after the first plain word is treated as text by the companion.
+- Put flags such as `--model` first, then ` -- `, then the request text exactly as the user wrote it. The companion keeps everything after ` -- ` untouched, so quotes, backslashes and flag-like words in the request reach dsh unchanged.
 
 Execution mode rules:
 - If the raw arguments include `--wait`, do not ask. Run in the foreground.
@@ -33,9 +33,9 @@ Execution mode rules:
 
 Foreground flow:
 - Set the Bash `timeout` to `600000` so a long dsh run is not cut off at two minutes. If work may take longer, prefer the background flow.
-- Run, with the remaining arguments between the quotes:
+- Run, with the flags (if any), then ` -- `, then the request between the quotes:
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/dsh-companion.mjs" plan '<remaining arguments>'
+node "${CLAUDE_PLUGIN_ROOT}/scripts/dsh-companion.mjs" plan '<flags> -- <request>'
 ```
 - Return the command stdout verbatim, exactly as-is.
 - Do not paraphrase, summarize, or add commentary before or after it.
@@ -45,7 +45,7 @@ Background flow:
 - Launch with `Bash` in the background:
 ```typescript
 Bash({
-  command: `node "${CLAUDE_PLUGIN_ROOT}/scripts/dsh-companion.mjs" plan '<remaining arguments>'`,
+  command: `node "${CLAUDE_PLUGIN_ROOT}/scripts/dsh-companion.mjs" plan '<flags> -- <request>'`,
   description: "dsh plan",
   run_in_background: true
 })

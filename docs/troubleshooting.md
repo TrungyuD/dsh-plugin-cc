@@ -51,9 +51,10 @@ pick one. Get the ids from `/dsh:status`.
 
 ## Jobs from an old session are still running
 
-Ending a Claude session cancels the jobs that session started from its starting
-directory. Jobs started with `--cwd` somewhere else are not cleaned up. Cancel
-them with `/dsh:cancel <job-id>` from that directory.
+Ending a Claude session cancels the jobs that session started, including those
+started with `--cwd` in another directory. A session that crashed before it could
+end is not cleaned up. Cancel its jobs with `/dsh:cancel <job-id>` from the
+directory they run in.
 
 ## A resumed rescue is refused
 

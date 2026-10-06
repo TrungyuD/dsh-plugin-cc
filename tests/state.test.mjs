@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -5,7 +6,17 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { makeTempDir } from "./helpers.mjs";
-import { resolveJobFile, resolveJobLogFile, resolveStateDir, resolveStateFile, saveState } from "../plugins/dsh/scripts/lib/state.mjs";
+import {
+  forgetSessionWorkspaces,
+  listSessionWorkspaces,
+  pruneSessionIndex,
+  registerSessionWorkspace,
+  resolveJobFile,
+  resolveJobLogFile,
+  resolveStateDir,
+  resolveStateFile,
+  saveState
+} from "../plugins/dsh/scripts/lib/state.mjs";
 
 test("resolveStateDir uses a temp-backed per-workspace directory", () => {
   const workspace = makeTempDir();
@@ -111,4 +122,68 @@ test("saveState prunes dropped job artifacts when indexed jobs exceed the cap", 
       .flatMap((jobId) => [`${jobId}.json`, `${jobId}.log`])
       .sort()
   );
+});
+
+function withPluginData(fn) {
+  const saved = process.env.CLAUDE_PLUGIN_DATA;
+  const pluginData = makeTempDir();
+  process.env.CLAUDE_PLUGIN_DATA = pluginData;
+  try {
+    return fn(pluginData);
+  } finally {
+    if (saved === undefined) delete process.env.CLAUDE_PLUGIN_DATA;
+    else process.env.CLAUDE_PLUGIN_DATA = saved;
+  }
+}
+
+test("the session index keeps one marker per workspace and lists every workspace of a session", () => {
+  withPluginData(() => {
+    const first = fs.realpathSync(makeTempDir());
+    const second = fs.realpathSync(makeTempDir());
+    registerSessionWorkspace("claude-A", first);
+    registerSessionWorkspace("claude-A", first);
+    registerSessionWorkspace("claude-A", second);
+    registerSessionWorkspace("claude-B", second);
+
+    assert.deepEqual(listSessionWorkspaces("claude-A").sort(), [first, second].sort());
+    assert.deepEqual(listSessionWorkspaces("claude-B"), [second]);
+    assert.deepEqual(listSessionWorkspaces("claude-unknown"), []);
+  });
+});
+
+test("forgetSessionWorkspaces removes only that session's markers", () => {
+  withPluginData(() => {
+    const workspace = fs.realpathSync(makeTempDir());
+    registerSessionWorkspace("claude-A", workspace);
+    registerSessionWorkspace("claude-B", workspace);
+    forgetSessionWorkspaces("claude-A");
+    forgetSessionWorkspaces("claude-A");
+
+    assert.deepEqual(listSessionWorkspaces("claude-A"), []);
+    assert.deepEqual(listSessionWorkspaces("claude-B"), [workspace]);
+  });
+});
+
+test("pruneSessionIndex drops only session markers older than the limit", () => {
+  withPluginData((pluginData) => {
+    const workspace = fs.realpathSync(makeTempDir());
+    registerSessionWorkspace("claude-old", workspace);
+    registerSessionWorkspace("claude-new", workspace);
+    const sessionsDir = path.join(pluginData, "state", "sessions");
+    const oldDir = createHash("sha256").update("claude-old").digest("hex").slice(0, 16);
+    const tenDaysAgo = (Date.now() - 10 * 24 * 3600 * 1000) / 1000;
+    fs.utimesSync(path.join(sessionsDir, oldDir), tenDaysAgo, tenDaysAgo);
+
+    pruneSessionIndex(7 * 24 * 3600 * 1000);
+
+    assert.deepEqual(listSessionWorkspaces("claude-old"), []);
+    assert.deepEqual(listSessionWorkspaces("claude-new"), [workspace]);
+  });
+});
+
+test("pruneSessionIndex and listSessionWorkspaces are quiet when nothing is indexed", () => {
+  withPluginData(() => {
+    pruneSessionIndex(1000);
+    assert.deepEqual(listSessionWorkspaces("claude-A"), []);
+  });
 });

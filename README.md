@@ -35,7 +35,7 @@ The package is also published on npm as [`dsh-plugin-cc`](https://www.npmjs.com/
 
 | Command | What it does |
 |---|---|
-| `/dsh:plan <what to plan>` | dsh explores the repository and writes an implementation plan. Read-only. |
+| `/dsh:plan <what to plan>` | dsh explores the repository and writes an implementation plan, which is saved as `plans/<YYMMDD-HHmm>-<slug>/plan.md`. dsh itself is read-only. |
 | `/dsh:review-plan [path] [focus]` | dsh checks a plan against the real code and answers with `Verdict: approve`, `needs-changes` or `reject`, then findings. Read-only. |
 | `/dsh:rescue [--write\|--read-only] [--resume\|--fresh] <task>` | Hands a debugging or implementation task to dsh through the `dsh-rescue` subagent. |
 | `/dsh:status [job-id]` | Lists active and recent jobs for this repository. |
@@ -44,6 +44,15 @@ The package is also published on npm as [`dsh-plugin-cc`](https://www.npmjs.com/
 | `/dsh:setup` | Checks the installation and login. |
 
 `/dsh:plan` and `/dsh:review-plan` take `--wait` or `--background`. Without either, Claude asks once and recommends background. `/dsh:rescue` takes the same flags. All of them take `--model flash|pro|<name>`.
+
+### Plan
+
+```
+/dsh:plan add a --version flag to the CLI
+/dsh:plan --model pro --wait split the session code into its own module
+```
+
+dsh stays read-only while it explores. When it finishes, the plugin saves the plan as `plans/<YYMMDD-HHmm>-<slug>/plan.md` in the repository and prints `Saved plan: <path>`. A run that fails or is cancelled saves nothing. `/dsh:review-plan` with no path then offers that plan first. If you track `plans/` in git, each run leaves a new untracked file.
 
 ### Review a plan
 
@@ -69,7 +78,7 @@ The default is `deepseek-flash`, dsh's own default, so nothing is overridden unl
 
 ## Permission model
 
-- `/dsh:plan` and `/dsh:review-plan` always run read-only. The sandbox denies file writes, and escalation requests fail because headless dsh has no approval channel.
+- `/dsh:plan` and `/dsh:review-plan` always run read-only for dsh. The sandbox denies file writes, and escalation requests fail because headless dsh has no approval channel. `/dsh:plan` writes one file, the plan, after dsh has finished.
 - `/dsh:rescue` can write by default. Ask for diagnosis or research only, or pass `--read-only`, to prevent edits.
 - A resumed rescue session keeps the mode it was created with. Asking for a different mode on resume fails with a message to start a new session with `--fresh`.
 - "Read-only" protects your workspace. dsh still writes its own sessions and profile under `~/.dsh/`.
@@ -79,7 +88,7 @@ The default is `deepseek-flash`, dsh's own default, so nothing is overridden unl
 
 Every run is a one-shot `dsh --profile headless --json` process, and each one leaves a session under `~/.dsh/sessions/`. The footer of each result names the session, for example `dsh session: session-… · model: deepseek-flash · mode: read-only`. Continue a session in the terminal with `dsh tui --resume <session-id>`.
 
-Job records live in the plugin data directory, scoped to the repository and to the Claude session. Ending the Claude session cancels that session's running jobs.
+Job records live in the plugin data directory, scoped to the repository and to the Claude session. Ending the Claude session cancels that session's running jobs, including jobs it started in other directories with `--cwd`.
 
 ## Limits
 
@@ -88,8 +97,6 @@ Job records live in the plugin data directory, scoped to the repository and to t
 - No `--effort` option, and no stop-time review gate.
 - The plugin only knows the permission mode it started a session with. If you change a session's mode yourself in `dsh tui --resume`, the plugin's footer and its `--read-only` check no longer reflect it.
 - Foreground runs are limited by Claude Code's Bash timeout (the commands ask for 10 minutes). Use `--background` for longer work.
-- Quote and backslash characters in request text are normalized when the arguments are split.
-- Ending a Claude session only cancels jobs started from that session's starting directory; jobs started with `--cwd` elsewhere are not cleaned up.
 
 ## Help and contributing
 

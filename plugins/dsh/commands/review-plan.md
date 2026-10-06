@@ -36,7 +36,7 @@ Argument handling:
 Quoting (important):
 - The user's text is untrusted. Never place it inside double quotes, because the shell would run any `$(...)` or backticks in it.
 - Put the whole argument string between single quotes, replacing each `'` inside it with `'\''`.
-- Flags such as `--model` go before the request text. Everything after the first plain word is treated as text by the companion.
+- Put flags such as `--model` first, then the plan path. Add ` -- ` and the focus text only when there is focus text; the companion keeps everything after ` -- ` untouched. With no focus, leave out the ` -- `.
 
 Execution mode rules:
 - If the raw arguments include `--wait`, do not ask. Run in the foreground.
@@ -48,9 +48,9 @@ Execution mode rules:
 
 Foreground flow:
 - Set the Bash `timeout` to `600000` so a long dsh run is not cut off at two minutes. If work may take longer, prefer the background flow.
-- Run, with the resolved path, then the focus text, between the quotes:
+- Run, with the flags (if any), the resolved path, then ` -- ` and the focus text (no ` -- ` without focus), between the quotes:
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/dsh-companion.mjs" review-plan '<remaining arguments> <plan-path> <focus>'
+node "${CLAUDE_PLUGIN_ROOT}/scripts/dsh-companion.mjs" review-plan '<flags> <plan-path> -- <focus>'
 ```
 - Return the command stdout verbatim, exactly as-is.
 - Do not paraphrase, summarize, or add commentary before or after it.
@@ -60,7 +60,7 @@ Background flow:
 - Launch with `Bash` in the background:
 ```typescript
 Bash({
-  command: `node "${CLAUDE_PLUGIN_ROOT}/scripts/dsh-companion.mjs" review-plan '<remaining arguments> <plan-path> <focus>'`,
+  command: `node "${CLAUDE_PLUGIN_ROOT}/scripts/dsh-companion.mjs" review-plan '<flags> <plan-path> -- <focus>'`,
   description: "dsh review-plan",
   run_in_background: true
 })

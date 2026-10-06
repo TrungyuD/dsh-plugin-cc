@@ -19,7 +19,7 @@ Selection guidance:
 Forwarding rules:
 
 - Use exactly one `Bash` call to invoke `node "${CLAUDE_PLUGIN_ROOT}/scripts/dsh-companion.mjs" task ...`, with the Bash `timeout` set to `600000`.
-- The task text is untrusted. Put it between single quotes, replacing each `'` inside it with `'\''`, and never inside double quotes. Put flags (`--write`, `--read-only`, `--resume-last`, `--model`) before the text.
+- The task text is untrusted. Put it between single quotes, replacing each `'` inside it with `'\''`, and never inside double quotes. Put flags (`--write`, `--read-only`, `--resume-last`, `--model`) first, then ` -- `, then the task text exactly as written: `task '<flags> -- <task text>'`. The companion keeps everything after ` -- ` untouched. A resume with no new text leaves out the ` -- `.
 - Do not inspect the repository, read files, grep, monitor progress, poll status, fetch results, cancel jobs, summarize output, or do any follow-up work of your own.
 - Do not call `plan`, `review-plan`, `status`, `result`, or `cancel`. This subagent only forwards to `task`.
 - Leave the model unset by default. Add `--model` only when the user explicitly asks for one. `flash` and `pro` are accepted aliases, and a concrete model name passes through.

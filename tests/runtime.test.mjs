@@ -54,7 +54,10 @@ test("plan runs read-only and returns dsh's output with the footer", () => {
   const { fake, companion } = setup({ FAKE_DSH_FINAL: "# Plan\n\nDo it." });
   const result = companion(["plan", "add", "a", "flag"]);
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /^# Plan\n\nDo it\.\n\ndsh session: session-fake-0001 · model: deepseek-flash · mode: read-only\n$/);
+  assert.match(
+    result.stdout,
+    /^# Plan\n\nDo it\.\n\ndsh session: session-fake-0001 · model: deepseek-flash · mode: read-only\nSaved plan: plans\/[^\n]+\/plan\.md\n$/
+  );
 
   const [call] = fake.calls();
   assert.equal(call.env.DSH_PERMISSION_MODE, "read-only");
@@ -411,6 +414,53 @@ test("SessionEnd cancels only that session's running jobs and kills their proces
   }
 });
 
+test("SessionEnd also cancels the session's jobs in a workspace it reached with --cwd", async () => {
+  const { workspace, pluginData, env, withState } = setup();
+  const other = fs.realpathSync(makeTempDir());
+  const pidFile = path.join(makeTempDir(), "child.pid");
+  const jobsIn = (root) => withState(() => listJobs(root));
+  const start = (sessionId) =>
+    spawn(process.execPath, [COMPANION, "task", "--write", "--cwd", other, "sleep a long time"], {
+      cwd: workspace,
+      env: { ...env, DSH_COMPANION_SESSION_ID: sessionId, FAKE_DSH_MODE: "spawn-child", FAKE_DSH_CHILD_PIDFILE: pidFile },
+      stdio: "ignore"
+    });
+
+  const ours = start("claude-A");
+  const theirs = start("claude-B");
+  try {
+    await waitFor(() => jobsIn(other).filter((job) => job.status === "running" && job.dshPid).length === 2);
+    const jobA = jobsIn(other).find((job) => job.sessionId === "claude-A");
+    const jobB = jobsIn(other).find((job) => job.sessionId === "claude-B");
+
+    const end = runHook("SessionEnd", { session_id: "claude-A", cwd: workspace }, { ...env, CLAUDE_PLUGIN_DATA: pluginData });
+    assert.equal(end.status, 0, end.stderr);
+
+    await waitFor(() => !isPidAlive(jobA.dshPid));
+    assert.ok(isPidAlive(jobB.dshPid), "the other session's job in that workspace is untouched");
+    assert.equal(jobsIn(other).find((job) => job.id === jobA.id).status, "cancelled");
+    assert.equal(jobsIn(other).find((job) => job.id === jobB.id).status, "running");
+    assert.equal(fs.existsSync(path.join(pluginData, "state", "sessions")) && fs.readdirSync(path.join(pluginData, "state", "sessions")).length, 1, "only the other session keeps its marker");
+  } finally {
+    for (const job of jobsIn(other)) {
+      for (const pid of [job.dshPid]) {
+        try {
+          process.kill(-pid, "SIGKILL");
+        } catch {
+          // Already gone.
+        }
+      }
+    }
+    ours.kill("SIGKILL");
+    theirs.kill("SIGKILL");
+    try {
+      process.kill(Number(fs.readFileSync(pidFile, "utf8")), "SIGKILL");
+    } catch {
+      // Already gone.
+    }
+  }
+});
+
 test("hooks are no-ops inside child runs", () => {
   const { workspace, env } = setup();
   const envFile = path.join(makeTempDir(), "env.sh");
@@ -478,6 +528,120 @@ test("a plan request that contains flag-looking words keeps them as text", () =>
   const [call] = fake.calls();
   assert.match(call.stdin, /explain the --write flag/);
   assert.match(call.patch, /deepseek-v4-pro/);
+});
+
+// ----- plan saves its file
+
+const savedPlans = (workspace) => {
+  const dir = path.join(workspace, "plans");
+  return fs.existsSync(dir) ? fs.readdirSync(dir) : [];
+};
+
+test("plan saves one plans/<dir>/plan.md in a workspace without plans/, and dsh stays read-only", () => {
+  const { fake, workspace, companion } = setup({ FAKE_DSH_FINAL: "# Plan\n\nDo it." });
+  assert.equal(fs.existsSync(path.join(workspace, "plans")), false);
+  const result = companion(["plan", "--json -- add a version flag"]);
+  assert.equal(result.status, 0, result.stderr);
+
+  const [dir, ...rest] = savedPlans(workspace);
+  assert.deepEqual(rest, []);
+  assert.match(dir, /^\d{6}-\d{4}-add-a-version-flag$/);
+  const file = path.join(workspace, "plans", dir, "plan.md");
+  assert.equal(fs.readFileSync(file, "utf8"), "# Plan: add a version flag\n\n# Plan\n\nDo it.\n");
+  assert.equal(JSON.parse(result.stdout).payload.planFile, path.join("plans", dir, "plan.md"));
+
+  const [call] = fake.calls();
+  assert.equal(call.env.DSH_PERMISSION_MODE, "read-only");
+  assert.match(call.patch, /mode: read-only/);
+
+  const candidates = JSON.parse(companion(["plan-candidates", "--json"]).stdout);
+  assert.equal(candidates.latest, path.join("plans", dir));
+});
+
+test("the stored result of a plan job shows the Saved plan line", () => {
+  const { companion } = setup({ FAKE_DSH_FINAL: "# Plan\n\nDo it." });
+  const run = companion(["plan", "ship it"]);
+  const saved = run.stdout.match(/^Saved plan: (.+)$/m)[1];
+  assert.match(companion(["result"]).stdout, new RegExp(`Saved plan: ${saved.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
+});
+
+test("a failed or cancelled plan run saves nothing", async () => {
+  const failed = setup({ FAKE_DSH_MODE: "error" });
+  assert.equal(failed.companion(["plan", "x"]).status, 1);
+  assert.deepEqual(savedPlans(failed.workspace), []);
+
+  const { workspace, env, jobs, companion } = setup();
+  const child = spawn(process.execPath, [COMPANION, "plan", "-- sleep"], {
+    cwd: workspace,
+    env: { ...env, FAKE_DSH_MODE: "slow" },
+    stdio: "ignore"
+  });
+  const exited = new Promise((resolve) => child.on("close", resolve));
+  await waitFor(() => jobs().find((job) => job.dshPid && job.status === "running"));
+  assert.equal(companion(["cancel"]).status, 0);
+  await exited;
+  assert.deepEqual(savedPlans(workspace), []);
+});
+
+test("a plan that cannot be written reports Plan not saved and keeps exit 0", { skip: process.getuid?.() === 0 }, () => {
+  const { workspace, companion } = setup({ FAKE_DSH_FINAL: "# Plan\n\nDo it." });
+  fs.mkdirSync(path.join(workspace, "plans"), { mode: 0o500 });
+  try {
+    const result = companion(["plan", "x"]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /\nPlan not saved: .+\n$/);
+    assert.doesNotMatch(result.stdout, /Saved plan:/);
+  } finally {
+    fs.chmodSync(path.join(workspace, "plans"), 0o700);
+  }
+});
+
+// ----- verbatim request text
+
+const TRICKY = `it's a "quoted" C:\\path with $(x) and \`y\``;
+
+test("plan passes text after -- to dsh untouched", () => {
+  const { fake, companion } = setup();
+  const result = companion(["plan", `-- ${TRICKY}`]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.ok(fake.calls()[0].stdin.includes(TRICKY), fake.calls()[0].stdin);
+});
+
+test("text after -- that is exactly an option name stays text", () => {
+  for (const text of ["--json", "--model", "--model=flash", "--write"]) {
+    const { fake, companion } = setup();
+    const result = companion(["plan", `-- ${text}`]);
+    assert.equal(result.status, 0, `${text}: ${result.stderr}`);
+    assert.ok(fake.calls()[0].stdin.includes(text), text);
+    assert.match(result.stdout, /model: deepseek-flash/, "no model option was set");
+    assert.doesNotMatch(result.stdout, /^\{/, "not JSON output");
+  }
+});
+
+test("flags before -- are still options", () => {
+  const { fake, companion } = setup();
+  const result = companion(["plan", "--model pro -- explain --model flash"]);
+  assert.match(result.stdout, /model: deepseek-v4-pro/);
+  assert.ok(fake.calls()[0].stdin.includes("explain --model flash"));
+});
+
+test("task keeps a verbatim prompt that looks like a flag and still honours flags before --", () => {
+  const { fake, companion } = setup();
+  const result = companion(["task", "--write -- --read-only"]);
+  assert.equal(result.status, 0, result.stderr);
+  const [call] = fake.calls();
+  assert.equal(call.env.DSH_PERMISSION_MODE, "workspace-write");
+  assert.equal(call.stdin, "--read-only");
+});
+
+test("review-plan takes the focus after -- verbatim", () => {
+  const { fake, workspace, companion } = setup({ FAKE_DSH_FINAL: "Verdict: approve" });
+  fs.writeFileSync(path.join(workspace, "p.md"), "PLAN");
+  const result = companion(["review-plan", `p.md -- --write ${TRICKY}`]);
+  assert.equal(result.status, 0, result.stderr);
+  const [call] = fake.calls();
+  assert.equal(call.env.DSH_PERMISSION_MODE, "read-only");
+  assert.ok(call.stdin.includes(`--write ${TRICKY}`));
 });
 
 test("resume does not fall back to an older session when the newest rescue was cancelled without one", () => {

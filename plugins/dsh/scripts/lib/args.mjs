@@ -75,13 +75,21 @@ export function parseArgs(argv, config = {}) {
   return { options, positionals };
 }
 
+/**
+ * Splits one raw argument string like a shell would, except that an unquoted standalone `--` ends
+ * the splitting: everything after it comes back untouched as `verbatim`, so request text keeps its
+ * quotes and backslashes. `verbatim` is null when there is no such `--`.
+ */
 export function splitRawArgumentString(raw) {
   const tokens = [];
   let current = "";
   let quote = null;
   let escaping = false;
+  let wordStart = true;
 
-  for (const character of raw) {
+  for (let index = 0; index < raw.length; index += 1) {
+    const character = raw[index];
+
     if (escaping) {
       current += character;
       escaping = false;
@@ -90,6 +98,7 @@ export function splitRawArgumentString(raw) {
 
     if (character === "\\") {
       escaping = true;
+      wordStart = false;
       continue;
     }
 
@@ -104,6 +113,7 @@ export function splitRawArgumentString(raw) {
 
     if (character === "'" || character === "\"") {
       quote = character;
+      wordStart = false;
       continue;
     }
 
@@ -112,10 +122,17 @@ export function splitRawArgumentString(raw) {
         tokens.push(current);
         current = "";
       }
+      wordStart = true;
       continue;
     }
 
+    if (wordStart && character === "-" && raw[index + 1] === "-" && (index + 2 === raw.length || /\s/.test(raw[index + 2]))) {
+      // The one whitespace character that separates `--` from the text is not part of the text.
+      return { tokens, verbatim: raw.slice(index + 2).replace(/^\s/, "") };
+    }
+
     current += character;
+    wordStart = false;
   }
 
   if (escaping) {
@@ -126,5 +143,5 @@ export function splitRawArgumentString(raw) {
     tokens.push(current);
   }
 
-  return tokens;
+  return { tokens, verbatim: null };
 }

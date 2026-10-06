@@ -9,10 +9,10 @@ user-invocable: false
 Use this skill only inside the `dsh:dsh-rescue` subagent.
 
 Primary helper:
-- `node "${CLAUDE_PLUGIN_ROOT}/scripts/dsh-companion.mjs" task "<raw arguments>"`
+- `node "${CLAUDE_PLUGIN_ROOT}/scripts/dsh-companion.mjs" task '<flags> -- <task text>'`
 
 Execution rules:
-- Set the Bash `timeout` to `600000` and put the task text between single quotes (escape each `'` as `'\''`), after all flags.
+- Set the Bash `timeout` to `600000` and put the whole argument string between single quotes (escape each `'` as `'\''`): the flags first, then ` -- `, then the task text. The companion keeps the text after ` -- ` untouched.
 - The rescue subagent is a forwarder, not an orchestrator. Its only job is to invoke `task` once and return that stdout unchanged.
 - Prefer the helper over hand-rolled `dsh` command lines or any other Bash activity.
 - Do not call `setup`, `plan`, `review-plan`, `status`, `result`, or `cancel` from `dsh:dsh-rescue`.
