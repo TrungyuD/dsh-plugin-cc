@@ -4,9 +4,13 @@
 
 Use [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`) from inside Claude Code to plan work, review plans and hand tasks to dsh.
 
-> **Unofficial.** This plugin is not affiliated with or endorsed by DeepSeek or Anthropic. It is also a separate project from [cpj-dev/dsh-plugin-cc](https://github.com/cpj-dev/dsh-plugin-cc), which has the same name and a similar purpose.
+This plugin is for Claude Code users who want an easy way to start using dsh from the workflow they already have.
 
-The plugin follows the layout of [codex-plugin-cc](https://github.com/openai/codex-plugin-cc) (Apache-2.0). Its commands follow what dsh offers rather than mirroring Codex's.
+## What You Get
+
+- `/dsh:plan` for a read-only implementation plan written by dsh
+- `/dsh:review-plan` to check a plan against the real code
+- `/dsh:rescue`, `/dsh:status`, `/dsh:result` and `/dsh:cancel` to delegate work and manage background jobs
 
 ## Requirements
 
@@ -66,7 +70,7 @@ The default is `deepseek-flash`, dsh's own default, so nothing is overridden unl
 ## Permission model
 
 - `/dsh:plan` and `/dsh:review-plan` always run read-only. The sandbox denies file writes, and escalation requests fail because headless dsh has no approval channel.
-- `/dsh:rescue` can write by default, the same as the Codex plugin. Ask for diagnosis or research only, or pass `--read-only`, to prevent edits.
+- `/dsh:rescue` can write by default. Ask for diagnosis or research only, or pass `--read-only`, to prevent edits.
 - A resumed rescue session keeps the mode it was created with. Asking for a different mode on resume fails with a message to start a new session with `--fresh`.
 - "Read-only" protects your workspace. dsh still writes its own sessions and profile under `~/.dsh/`.
 - The plugin never uses dsh's `never` approval policy, because that auto-approves.
