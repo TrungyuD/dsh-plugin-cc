@@ -3,13 +3,13 @@
   "owner": { "name": "dsh-plugin-cc contributors" },
   "metadata": {
     "description": "Unofficial Claude Code plugin for DeepSeek Harness (dsh).",
-    "version": "0.1.0"
+    "version": "0.1.1"
   },
   "plugins": [
     {
       "name": "dsh",
       "description": "Use DeepSeek Harness from Claude Code to plan, review plans and delegate tasks.",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "author": { "name": "dsh-plugin-cc contributors" },
       "source": "./plugins/dsh"
     }

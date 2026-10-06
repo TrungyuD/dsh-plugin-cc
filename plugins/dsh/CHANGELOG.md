@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.1
+
+- Fix `npm test` on Node 18 (the unsupported `--test-timeout` flag is gone, and the fake dsh test fixture loads as ESM).
+- README: marketplace install command and npm links.
+
 ## 0.1.0
 
 - `/dsh:setup`, `/dsh:plan`, `/dsh:review-plan`, `/dsh:rescue`, `/dsh:status`, `/dsh:result` and `/dsh:cancel`.
