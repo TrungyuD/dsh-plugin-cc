@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.0
+
+- `/dsh:plan` saves the plan as `plans/<YYMMDD-HHmm>-<slug>/plan.md` after dsh finishes, so `/dsh:review-plan` offers it next. dsh itself stays read-only.
+- Request text reaches dsh exactly as typed: the commands pass flags, then ` -- `, then the text, and the companion no longer drops quotes or backslashes from it.
+- Ending a Claude session cancels its running jobs in every workspace it used, including those started with `--cwd` elsewhere.
+
 ## 0.1.1
 
 - Fix `npm test` on Node 18 (the unsupported `--test-timeout` flag is gone, and the fake dsh test fixture loads as ESM).
