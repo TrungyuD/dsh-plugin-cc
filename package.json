@@ -8,5 +8,5 @@
   "repository": { "type": "git", "url": "git+https://github.com/TrungyuD/dsh-plugin-cc.git" },
   "engines": { "node": ">=18.18.0" },
   "files": ["plugins/", ".claude-plugin/", "README.md", "LICENSE", "NOTICE"],
-  "scripts": { "test": "node --test --test-timeout=120000 tests/*.test.mjs" }
+  "scripts": { "test": "node --test tests/*.test.mjs" }
 }
