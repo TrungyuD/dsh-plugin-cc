@@ -1,5 +1,7 @@
 # dsh-plugin-cc
 
+[![npm](https://img.shields.io/npm/v/dsh-plugin-cc)](https://www.npmjs.com/package/dsh-plugin-cc)
+
 Use [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`) from inside Claude Code to plan work, review plans and hand tasks to dsh.
 
 > **Unofficial.** This plugin is not affiliated with or endorsed by DeepSeek or Anthropic. It is also a separate project from [cpj-dev/dsh-plugin-cc](https://github.com/cpj-dev/dsh-plugin-cc), which has the same name and a similar purpose.
@@ -21,7 +23,7 @@ The plugin follows the layout of [codex-plugin-cc](https://github.com/openai/cod
 /dsh:setup
 ```
 
-The package is also published on npm as `dsh-plugin-cc` (`npm i dsh-plugin-cc`, `yarn add dsh-plugin-cc` or `pnpm add dsh-plugin-cc`). That only downloads the files into `node_modules`; it does not register the plugin with Claude Code. Install it with the `/plugin` commands above.
+The package is also published on npm as [`dsh-plugin-cc`](https://www.npmjs.com/package/dsh-plugin-cc) (`npm i dsh-plugin-cc`, `yarn add dsh-plugin-cc` or `pnpm add dsh-plugin-cc`). That only downloads the files into `node_modules`; it does not register the plugin with Claude Code. Install it with the `/plugin` commands above.
 
 `/dsh:setup` checks Node, dsh and its version, and runs a one-line read-only smoke prompt to confirm you are logged in. If dsh is missing it offers to install it.
 
