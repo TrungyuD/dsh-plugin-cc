@@ -6,7 +6,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 import { installFakeDsh } from "./fake-dsh-fixture.mjs";
-import { isPidAlive, makeTempDir, run, waitFor } from "./helpers.mjs";
+import { initGitRepo, isPidAlive, makeTempDir, run, waitFor } from "./helpers.mjs";
 import { extractVerdict } from "../plugins/dsh/scripts/dsh-companion.mjs";
 import { listJobs, readJobFile, resolveJobFile, upsertJob, writeJobFile } from "../plugins/dsh/scripts/lib/state.mjs";
 
@@ -125,6 +125,140 @@ test("review-plan exits 2 for a missing path, a directory without plan.md, and n
   assert.match(empty.stderr, /No plan\.md/);
   assert.equal(companion(["review-plan"]).status, 2);
   assert.equal(fake.calls().length, 0, "dsh is never started for a bad path");
+});
+
+function setupRepo(extraEnv = {}) {
+  const context = setup(extraEnv);
+  const { workspace } = context;
+  const git = (...args) => {
+    const result = run("git", args, { cwd: workspace });
+    assert.equal(result.status, 0, `git ${args.join(" ")}: ${result.stderr}`);
+  };
+  initGitRepo(workspace);
+  fs.writeFileSync(path.join(workspace, "a.txt"), "one\n");
+  git("add", ".");
+  git("commit", "-m", "initial");
+  return { ...context, git };
+}
+
+test("code-review sends the working-tree diff and the verbatim focus to a read-only dsh", () => {
+  const { fake, workspace, companion } = setupRepo({ FAKE_DSH_FINAL: "Verdict: approve" });
+  fs.writeFileSync(path.join(workspace, "a.txt"), "one\nADDED-LINE\n");
+  const result = companion(["code-review", `-- it's a "quoted" C:\\p $(x)`]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /^Verdict: approve/);
+
+  const [call] = fake.calls();
+  assert.equal(call.env.DSH_PERMISSION_MODE, "read-only");
+  assert.match(call.patch, /mode: read-only/);
+  assert.match(call.stdin, /\+ADDED-LINE/);
+  assert.match(call.stdin, /Staged, unstaged and untracked changes/);
+  assert.ok(call.stdin.includes(`it's a "quoted" C:\\p $(x)`));
+});
+
+test("code-review records the verdict and the target in the job summary", () => {
+  const { workspace, companion, jobs } = setupRepo({ FAKE_DSH_FINAL: "Verdict: needs-changes\n\n1. problem" });
+  fs.writeFileSync(path.join(workspace, "a.txt"), "two\n");
+  assert.equal(companion(["code-review"]).status, 0);
+  const [job] = jobs();
+  assert.equal(job.kind, "code-review");
+  assert.equal(job.summary, "Verdict: needs-changes (working tree)");
+  assert.match(companion(["result"]).stdout, /^Verdict: needs-changes/);
+  assert.match(companion(["status"]).stdout, /code-review/);
+});
+
+test("code-review reviews the branch against --base and says uncommitted edits are left out", () => {
+  const { fake, workspace, companion, git } = setupRepo();
+  git("checkout", "-q", "-b", "feature");
+  fs.writeFileSync(path.join(workspace, "b.txt"), "BRANCH-WORK\n");
+  git("add", ".");
+  git("commit", "-m", "branch work");
+  const result = companion(["code-review", "--base main"]);
+  assert.equal(result.status, 0, result.stderr);
+  const stdin = fake.calls()[0].stdin;
+  assert.match(stdin, /branch feature against main/);
+  assert.match(stdin, /Uncommitted edits are not part of this review/);
+  assert.match(stdin, /\+BRANCH-WORK/);
+  assert.match(stdin, /branch work/);
+});
+
+test("code-review with no changes prints one line and never starts dsh or a job", () => {
+  const { fake, companion, jobs } = setupRepo();
+  const result = companion(["code-review"]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout, "Nothing to review: branch main against main has no changes.\n");
+  assert.equal(fake.calls().length, 0);
+  assert.equal(jobs().length, 0);
+});
+
+test("code-review exits 2 before dsh for a bad scope, a bad ref and a directory that is not a repository", () => {
+  const { fake, companion } = setupRepo();
+  const scope = companion(["code-review", "--scope weird"]);
+  assert.equal(scope.status, 2);
+  assert.match(scope.stderr, /Unsupported review scope "weird"/);
+  const base = companion(["code-review", "--base nope"]);
+  assert.equal(base.status, 2);
+  assert.match(base.stderr, /Unknown ref: nope/);
+  const conflict = companion(["code-review", "--base main --scope working-tree"]);
+  assert.equal(conflict.status, 2);
+
+  const plain = setup();
+  const notRepo = plain.companion(["code-review"]);
+  assert.equal(notRepo.status, 2);
+  assert.match(notRepo.stderr, /inside a Git repository/);
+  assert.equal(fake.calls().length + plain.fake.calls().length, 0);
+});
+
+test("code-review text that looks like an option stays focus text", () => {
+  const { fake, workspace, companion } = setupRepo({ FAKE_DSH_FINAL: "Verdict: approve" });
+  fs.writeFileSync(path.join(workspace, "a.txt"), "two\n");
+  const result = companion(["code-review", "-- --json"]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /^Verdict: approve/);
+  assert.match(fake.calls()[0].stdin, /<focus>\n--json\n<\/focus>/);
+});
+
+test("code-review rejects a base ref that looks like an option and reports nothing to review as JSON", () => {
+  const { fake, companion } = setupRepo();
+  const option = companion(["code-review", "--base=-x"]);
+  assert.equal(option.status, 2);
+  assert.match(option.stderr, /Unknown ref: -x/);
+  const nothing = companion(["code-review", "--json"]);
+  assert.equal(nothing.status, 0, nothing.stderr);
+  assert.deepEqual(JSON.parse(nothing.stdout), { empty: true, mode: "branch", label: "branch main against main" });
+  assert.equal(fake.calls().length, 0);
+});
+
+test("code-review of a change over the cap sends the diffstat and still succeeds", () => {
+  const { fake, workspace, companion } = setupRepo({ FAKE_DSH_FINAL: "Verdict: approve" });
+  fs.writeFileSync(path.join(workspace, "a.txt"), "changed line\n".repeat(30000));
+  const result = companion(["code-review"]);
+  assert.equal(result.status, 0, result.stderr);
+  const stdin = fake.calls()[0].stdin;
+  assert.match(stdin, /Read the changed files yourself/);
+  assert.match(stdin, /<diffstat>/);
+  assert.doesNotMatch(stdin, /changed line\nchanged line/);
+  assert.match(companion(["code-review-target", "--json"]).stdout, /"truncated": true/);
+});
+
+test("code-review-target reports the resolved target and size without starting dsh", () => {
+  const { fake, workspace, companion } = setupRepo();
+  const clean = JSON.parse(companion(["code-review-target", "--json"]).stdout);
+  assert.equal(clean.empty, true);
+  assert.equal(clean.fileCount, 0);
+
+  fs.writeFileSync(path.join(workspace, "a.txt"), "two\n");
+  fs.writeFileSync(path.join(workspace, "new.txt"), "new\n");
+  const result = companion(["code-review-target", "--json"]);
+  assert.equal(result.status, 0, result.stderr);
+  const target = JSON.parse(result.stdout);
+  assert.equal(target.mode, "working-tree");
+  assert.equal(target.empty, false);
+  assert.equal(target.fileCount, 2);
+  assert.equal(target.truncated, false);
+  assert.ok(target.diffBytes > 0);
+  assert.match(companion(["code-review-target"]).stdout, /^working tree: 2 files, \d+ bytes\n$/);
+  assert.equal(fake.calls().length, 0);
 });
 
 test("extractVerdict reads the first line and reports unknown when it is missing", () => {

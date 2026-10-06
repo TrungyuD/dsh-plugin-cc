@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
 
 const PLUGIN_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "plugins", "dsh");
-const COMMANDS = ["plan", "review-plan", "rescue", "status", "result", "cancel", "setup"];
+const COMMANDS = ["plan", "review-plan", "code-review", "rescue", "status", "result", "cancel", "setup"];
 
 function read(...parts) {
   return fs.readFileSync(path.join(PLUGIN_ROOT, ...parts), "utf8");
@@ -26,7 +26,7 @@ function companionLines(text) {
   return text.split("\n").filter((line) => /node "\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/dsh-companion\.mjs"/.test(line));
 }
 
-test("all seven commands exist, have frontmatter, and call dsh-companion without codex names", () => {
+test("all eight commands exist, have frontmatter, and call dsh-companion without codex names", () => {
   for (const name of COMMANDS) {
     const text = read("commands", `${name}.md`);
     const fields = frontmatter(text);
@@ -36,8 +36,8 @@ test("all seven commands exist, have frontmatter, and call dsh-companion without
   }
 });
 
-test("plan and review-plan have foreground and background flows that use run_in_background", () => {
-  for (const name of ["plan", "review-plan"]) {
+test("plan, review-plan and code-review have foreground and background flows that use run_in_background", () => {
+  for (const name of ["plan", "review-plan", "code-review"]) {
     const text = read("commands", `${name}.md`);
     assert.match(text, /Foreground flow/);
     assert.match(text, /Background flow/);
@@ -55,8 +55,8 @@ test("no command forwards --wait or --background to the companion", () => {
   }
 });
 
-test("plan and review-plan and results return output verbatim and never implement", () => {
-  for (const name of ["plan", "review-plan"]) {
+test("plan, review-plan and code-review return output verbatim and never implement", () => {
+  for (const name of ["plan", "review-plan", "code-review"]) {
     const text = read("commands", `${name}.md`);
     assert.match(text, /verbatim/);
     assert.match(text, /Do not (implement|fix)/);
@@ -69,6 +69,14 @@ test("review-plan documents the two-option picker with the latest plan first", (
   assert.match(text, /Review which plan\?/);
   assert.match(text, /`<latest> \(Recommended\)`[\s\S]*`Enter a path`/);
   assert.match(text, /at most two pickers/);
+});
+
+test("code-review sizes the change first and recommends waiting only for a small one", () => {
+  const text = read("commands", "code-review.md");
+  assert.match(text, /code-review-target '--json/);
+  assert.match(text, /`empty` is true, tell the user there is nothing to review/);
+  assert.match(text, /`fileCount` is 2 or less and `truncated` is false/);
+  assert.match(text, /`Wait for results`[\s\S]*`Run in background`/);
 });
 
 test("rescue routes through the dsh-rescue subagent with the Agent tool and never forwards flags", () => {
@@ -92,14 +100,17 @@ test("the rescue agent is limited to Bash and defaults fresh runs to --write", (
 test("commands and the rescue agent put the user's text after a -- and never inside double quotes", () => {
   const plan = read("commands", "plan.md");
   const review = read("commands", "review-plan.md");
+  const codeReview = read("commands", "code-review.md");
   const agent = read("agents", "dsh-rescue.md");
   const skill = read("skills", "dsh-cli-runtime", "SKILL.md");
   assert.match(plan, /plan '<flags> -- <request>'/);
   assert.match(review, /review-plan '<flags> <plan-path> -- <focus>'/);
+  assert.match(codeReview, /code-review '<flags> -- <focus>'/);
+  assert.match(codeReview, /code-review-target '--json </);
   assert.match(agent, /task '<flags> -- <task text>'/);
   assert.match(skill, /task '<flags> -- <task text>'/);
-  for (const [name, text] of [["plan", plan], ["review-plan", review], ["skill", skill]]) {
-    assert.doesNotMatch(text, /(plan|review-plan|task) "</, `${name} has no double-quoted text placeholder`);
+  for (const [name, text] of [["plan", plan], ["review-plan", review], ["code-review", codeReview], ["skill", skill]]) {
+    assert.doesNotMatch(text, /(plan|review-plan|code-review|code-review-target|task) "</, `${name} has no double-quoted text placeholder`);
   }
 });
 

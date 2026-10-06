@@ -14,6 +14,7 @@ import {
   runHeadless
 } from "./lib/dsh.mjs";
 import { readStdinIfPiped } from "./lib/fs.mjs";
+import { ensureGitRepository } from "./lib/git.mjs";
 import {
   buildSingleJobSnapshot,
   buildStatusSnapshot,
@@ -25,6 +26,7 @@ import {
 import { collectPlanFiles, findLatestPlanDir, savePlanFile } from "./lib/plans.mjs";
 import { binaryAvailable, processCommandIncludes, terminateProcessTree } from "./lib/process.mjs";
 import { interpolateTemplate, loadPromptTemplate } from "./lib/prompts.mjs";
+import { collectReviewContext, resolveReviewTarget } from "./lib/review-target.mjs";
 import {
   renderCancelReport,
   renderJobStatusReport,
@@ -69,6 +71,8 @@ function printUsage() {
       "  node scripts/dsh-companion.mjs plan [--model <flash|pro|name>] <request>",
       "  node scripts/dsh-companion.mjs review-plan [--model <flash|pro|name>] <plan-path> [focus text]",
       "  node scripts/dsh-companion.mjs plan-candidates --json",
+      "  node scripts/dsh-companion.mjs code-review [--model <flash|pro|name>] [--base <ref>] [--scope auto|working-tree|branch] [focus text]",
+      "  node scripts/dsh-companion.mjs code-review-target [--base <ref>] [--scope auto|working-tree|branch] [--json]",
       "  node scripts/dsh-companion.mjs task [--write|--read-only] [--resume-last] [--model <flash|pro|name>] <prompt>",
       "  node scripts/dsh-companion.mjs task-resume-candidate --json",
       "  node scripts/dsh-companion.mjs status [job-id] [--all] [--wait] [--json]",
@@ -450,6 +454,92 @@ function handlePlanCandidates(argv) {
 }
 
 // ---------------------------------------------------------------------------
+// code-review
+
+// Everything git-related happens before dsh is involved, so a usage error or an empty change never
+// needs dsh.
+function prepareCodeReview(options) {
+  const cwd = resolveCommandCwd(options);
+  try {
+    const repoRoot = ensureGitRepository(cwd);
+    const target = resolveReviewTarget(repoRoot, { scope: options.scope, base: options.base });
+    return { cwd, repoRoot, target, context: collectReviewContext(repoRoot, target) };
+  } catch (error) {
+    throw new UsageError(error instanceof Error ? error.message : String(error));
+  }
+}
+
+function nothingToReviewLine(label) {
+  return `Nothing to review: ${label} has no changes.\n`;
+}
+
+async function handleCodeReview(argv) {
+  const { options, positionals } = parseCommandInput(argv, {
+    valueOptions: ["model", "cwd", "base", "scope"],
+    booleanOptions: ["json"],
+    stopAtPositional: true
+  });
+  const { cwd, repoRoot, target, context } = prepareCodeReview(options);
+  if (context.empty) {
+    outputCommandResult({ empty: true, mode: target.mode, label: target.label }, nothingToReviewLine(target.label), options.json);
+    return;
+  }
+  isDshAvailable(cwd);
+
+  const model = resolveModelOption(options);
+  const focus = positionals.join(" ").trim();
+  const targetNote =
+    target.mode === "branch"
+      ? `${target.label}. Uncommitted edits are not part of this review.`
+      : "Staged, unstaged and untracked changes in the working tree.";
+  const prompt = interpolateTemplate(loadPromptTemplate(ROOT_DIR, "code-review"), {
+    TARGET: targetNote,
+    FOCUS: focus || "No extra focus. Review the change as a whole.",
+    CHANGES: context.body
+  });
+  const job = createCompanionJob({
+    prefix: "code-review",
+    kind: "code-review",
+    title: "dsh Code Review",
+    workspaceRoot: repoRoot,
+    cwd,
+    summary: `Review ${target.label}`,
+    permissionMode: READ_ONLY,
+    model: model ?? DEFAULT_MODEL
+  });
+
+  await executeRun({
+    job,
+    prompt,
+    permissionMode: READ_ONLY,
+    model,
+    summarize: (finalText) => `Verdict: ${extractVerdict(finalText)} (${target.label})`,
+    asJson: options.json
+  });
+}
+
+function handleCodeReviewTarget(argv) {
+  const { options } = parseCommandInput(argv, {
+    valueOptions: ["cwd", "base", "scope"],
+    booleanOptions: ["json"]
+  });
+  const { target, context } = prepareCodeReview(options);
+  const payload = {
+    mode: target.mode,
+    baseRef: target.baseRef,
+    label: target.label,
+    empty: context.empty,
+    fileCount: context.fileCount,
+    diffBytes: context.diffBytes,
+    truncated: context.truncated
+  };
+  const rendered = context.empty
+    ? nothingToReviewLine(target.label)
+    : `${target.label}: ${context.fileCount} files, ${context.diffBytes} bytes${context.truncated ? " (too large to include in full)" : ""}\n`;
+  outputCommandResult(payload, rendered, options.json);
+}
+
+// ---------------------------------------------------------------------------
 // task (rescue)
 
 function readTaskPrompt(positionals) {
@@ -721,6 +811,12 @@ async function main() {
       break;
     case "plan-candidates":
       handlePlanCandidates(argv);
+      break;
+    case "code-review":
+      await handleCodeReview(argv);
+      break;
+    case "code-review-target":
+      handleCodeReviewTarget(argv);
       break;
     case "task":
       await handleTask(argv);

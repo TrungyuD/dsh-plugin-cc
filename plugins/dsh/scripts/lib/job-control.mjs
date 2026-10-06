@@ -57,7 +57,7 @@ function getJobTypeLabel(job) {
   if (typeof job.kindLabel === "string" && job.kindLabel) {
     return job.kindLabel;
   }
-  if (job.kind === "plan" || job.kind === "review-plan") {
+  if (job.kind === "plan" || job.kind === "review-plan" || job.kind === "code-review") {
     return job.kind;
   }
   if (job.kind === "task") {

@@ -15,7 +15,7 @@ Execution rules:
 - Set the Bash `timeout` to `600000` and put the whole argument string between single quotes (escape each `'` as `'\''`): the flags first, then ` -- `, then the task text. The companion keeps the text after ` -- ` untouched.
 - The rescue subagent is a forwarder, not an orchestrator. Its only job is to invoke `task` once and return that stdout unchanged.
 - Prefer the helper over hand-rolled `dsh` command lines or any other Bash activity.
-- Do not call `setup`, `plan`, `review-plan`, `status`, `result`, or `cancel` from `dsh:dsh-rescue`.
+- Do not call `setup`, `plan`, `review-plan`, `code-review`, `code-review-target`, `status`, `result`, or `cancel` from `dsh:dsh-rescue`.
 - Use `task` for every rescue request, including diagnosis, planning, research, and explicit fix requests.
 - Leave the model unset by default. Add `--model` only when the user explicitly asks for one. The aliases are `flash` (deepseek-flash) and `pro` (deepseek-v4-pro).
 

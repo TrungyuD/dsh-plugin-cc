@@ -76,6 +76,20 @@ workspace sandbox is not supported.
 - `No plan.md in <dir>`: a directory must contain `plan.md`. Its `phase-*.md`
   files are reviewed with it. Otherwise pass a single plan file.
 
+## Code review cannot find the default branch
+
+`/dsh:code-review` reviews a clean branch against the default branch. It looks at
+`origin/HEAD`, then at local `main`, `master` and `trunk`. If none exists, the command stops
+with `Cannot detect the default branch`. Pass `--base <ref>`, run
+`git remote set-head origin --auto`, or use `--scope working-tree`.
+
+## Code review says the change was not included in full
+
+A change larger than 256 KB is not sent as a diff. dsh gets the diffstat and the changed file
+names and reads the files itself, so its findings can be shallower. Review a smaller piece with
+`--scope working-tree` or a closer `--base`. Untracked files over 24 KB, binary files and symlinks
+are listed but never included.
+
 ## Timed out waiting for the dsh state lock
 
 Another companion process held the job state lock for more than 8 seconds.
