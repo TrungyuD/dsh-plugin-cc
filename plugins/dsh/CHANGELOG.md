@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.0
+
+- New `/dsh:code-review`: dsh reviews your local git changes (working tree, or the branch against a base) and answers with a verdict and findings. It is read-only and takes optional focus text after ` -- `, `--base <ref>` and `--scope auto|working-tree|branch`.
+
 ## 0.2.0
 
 - `/dsh:plan` saves the plan as `plans/<YYMMDD-HHmm>-<slug>/plan.md` after dsh finishes, so `/dsh:review-plan` offers it next. dsh itself stays read-only.

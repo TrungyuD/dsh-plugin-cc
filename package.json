@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-cc",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "description": "Use DeepSeek Harness (dsh) from Claude Code to plan, review plans and rescue tasks.",
   "license": "Apache-2.0",
