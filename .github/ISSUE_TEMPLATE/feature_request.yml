@@ -1,0 +1,29 @@
+name: Feature request
+description: Propose an enhancement or a dsh compatibility change
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do, and what gets in the way today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: The behavior you want, including the command and flags it would use.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Workarounds or other designs you tried or ruled out.
+  - type: textarea
+    id: dsh
+    attributes:
+      label: dsh dependency
+      description: Does this need a dsh flag, event or version the plugin does not use yet? Link the dsh docs or release if so.

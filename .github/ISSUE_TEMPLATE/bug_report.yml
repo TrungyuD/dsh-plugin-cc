@@ -1,0 +1,48 @@
+name: Bug report
+description: Report a defect you can reproduce
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for helping improve dsh-plugin-cc. Remove secrets and private paths from everything you paste.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before you submit
+      options:
+        - label: I searched the existing issues and read docs/troubleshooting.md.
+          required: true
+        - label: This report contains no credentials or security-sensitive details.
+          required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: The smallest sequence that shows the problem, including the exact `/dsh:*` command and flags.
+      placeholder: |
+        1. Run /dsh:plan --wait add a health check
+        2. See ...
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Plugin, dsh, Node.js and OS versions, and sanitized `/dsh:setup` output.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: The job id, the dsh session id, and a sanitized excerpt of the job log (`/dsh:status <job-id>` shows its path).
+      render: text

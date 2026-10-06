@@ -91,13 +91,14 @@ Job records live in the plugin data directory, scoped to the repository and to t
 - Quote and backslash characters in request text are normalized when the arguments are split.
 - Ending a Claude session only cancels jobs started from that session's starting directory; jobs started with `--cwd` elsewhere are not cleaned up.
 
-## Development
+## Help and contributing
 
-```
-npm test
-```
-
-Tests use a fake `dsh` binary, so they need neither network access nor credentials.
+- [docs/troubleshooting.md](docs/troubleshooting.md) covers common problems.
+- [SUPPORT.md](SUPPORT.md) explains where to ask for help and what to include.
+- [SECURITY.md](SECURITY.md) explains how to report a vulnerability privately.
+- [CONTRIBUTING.md](CONTRIBUTING.md) covers development, tests and releases.
+- [docs/dsh-compat.md](docs/dsh-compat.md) lists everything the plugin relies on in dsh.
+- [plugins/dsh/CHANGELOG.md](plugins/dsh/CHANGELOG.md) lists changes by version.
 
 ## License
 

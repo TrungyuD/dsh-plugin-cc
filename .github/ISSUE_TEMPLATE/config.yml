@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/TrungyuD/dsh-plugin-cc/security/advisories/new
+    about: Report vulnerabilities privately. Never put sensitive details in a public issue.
+  - name: DeepSeek Harness
+    url: https://github.com/deepseek-ai/deepseek-harness
+    about: Report behavior that also happens with dsh alone to the dsh project.
