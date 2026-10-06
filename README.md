@@ -15,11 +15,13 @@ The plugin follows the layout of [codex-plugin-cc](https://github.com/openai/cod
 ## Install
 
 ```
-/plugin marketplace add <path-or-url-of-this-repo>
+/plugin marketplace add TrungyuD/dsh-plugin-cc
 /plugin install dsh@dsh-plugin-cc
 /reload-plugins
 /dsh:setup
 ```
+
+The package is also published on npm as `dsh-plugin-cc` (`npm i dsh-plugin-cc`, `yarn add dsh-plugin-cc` or `pnpm add dsh-plugin-cc`). That only downloads the files into `node_modules`; it does not register the plugin with Claude Code. Install it with the `/plugin` commands above.
 
 `/dsh:setup` checks Node, dsh and its version, and runs a one-line read-only smoke prompt to confirm you are logged in. If dsh is missing it offers to install it.
 
