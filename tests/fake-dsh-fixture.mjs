@@ -75,6 +75,8 @@ for (const line of lines) {
 // Installs a fake \`dsh\` on a temp bin dir and returns env helpers for tests.
 export function installFakeDsh() {
   const binDir = makeTempDir("dsh-fake-bin-");
+  // The fake is an extensionless ESM script; Node < 20.19 only treats it as ESM when the nearest package.json says so.
+  fs.writeFileSync(path.join(binDir, "package.json"), '{"type":"module"}');
   writeExecutable(path.join(binDir, "dsh"), SOURCE.replace("#!/usr/bin/env node", `#!${process.execPath}`));
   const recordFile = path.join(makeTempDir("dsh-fake-record-"), "calls.json");
   return {
